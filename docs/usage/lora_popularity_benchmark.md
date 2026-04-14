@@ -19,7 +19,7 @@ Compare baseline multi-LoRA runtime behavior against popularity-aware residency 
 ### 1) Run side-by-side baseline vs popularity-aware
 
 ```bash
-.venv/bin/python -m vllm.benchmarks.lora_popularity_benchmark \
+python -m vllm.benchmarks.lora_popularity_benchmark \
   --model <base_model> \
   --tokenizer <tokenizer> \
   --lora-path <path_or_hf_lora> \
@@ -43,7 +43,7 @@ This writes:
 ### 2) Manual single-run baseline (no hints)
 
 ```bash
-.venv/bin/python -m vllm.benchmarks.throughput \
+python -m vllm.benchmarks.throughput \
   --backend vllm --dataset-name random \
   --model <base_model> --tokenizer <tokenizer> \
   --enable-lora --lora-path <path_or_hf_lora> \
@@ -55,7 +55,7 @@ This writes:
 ### 3) Manual single-run popularity-aware
 
 ```bash
-.venv/bin/python -m vllm.benchmarks.throughput \
+python -m vllm.benchmarks.throughput \
   --backend vllm --dataset-name random \
   --model <base_model> --tokenizer <tokenizer> \
   --enable-lora --lora-path <path_or_hf_lora> \
@@ -72,6 +72,13 @@ You can use a MacBook Pro to **run through correctness / workflow smoke tests**.
 - If no CUDA/NVIDIA GPU is available, treat this as functional validation.
 - Throughput/latency numbers from Mac should not be used as final GPU-serving claims.
 - For final performance conclusions (throughput/TTFT/latency), rerun on your target GPU server.
+
+## Conda note
+
+If you use Anaconda/Miniconda, activate your env first and run the same
+`python -m ...` commands. The benchmark wrapper now defaults to the current
+interpreter (`sys.executable`) and can also be overridden with
+`--python-executable`.
 
 ## Metrics to compare
 

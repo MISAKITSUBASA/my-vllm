@@ -11,6 +11,7 @@ import argparse
 import json
 import random
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -29,10 +30,11 @@ def build_cmd(
     input_len: int,
     output_len: int,
     lora_assignment_file: str | None,
+    python_executable: str,
     extra_args: list[str],
 ) -> list[str]:
     cmd = [
-        ".venv/bin/python",
+        python_executable,
         "-m",
         "vllm.benchmarks.throughput",
         "--backend",
@@ -89,6 +91,14 @@ def main() -> None:
     parser.add_argument("--input-len", type=int, default=256)
     parser.add_argument("--output-len", type=int, default=64)
     parser.add_argument("--output-dir", default="./benchmark_outputs")
+    parser.add_argument(
+        "--python-executable",
+        default=sys.executable,
+        help=(
+            "Python executable used to launch throughput runs. Defaults to the "
+            "current interpreter, so conda/venv workflows are supported."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--lora-assignment-file",
@@ -141,6 +151,7 @@ def main() -> None:
         input_len=args.input_len,
         output_len=args.output_len,
         lora_assignment_file=str(assignment_file),
+        python_executable=args.python_executable,
         extra_args=args.extra_arg,
     )
 
@@ -159,6 +170,7 @@ def main() -> None:
         input_len=args.input_len,
         output_len=args.output_len,
         lora_assignment_file=str(assignment_file),
+        python_executable=args.python_executable,
         extra_args=args.extra_arg,
     )
 
