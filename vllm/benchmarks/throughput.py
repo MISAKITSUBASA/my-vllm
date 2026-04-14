@@ -1038,3 +1038,11 @@ def main(args: argparse.Namespace):
         with open(args.output_json, "w") as f:
             json.dump(results, f, indent=4)
         save_to_pytorch_benchmark_format(args, results)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Benchmark offline inference throughput."
+    )
+    add_cli_args(parser)
+    main(parser.parse_args())
