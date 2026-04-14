@@ -74,7 +74,24 @@ def build_cmd(
 
 def run_cmd(cmd: list[str], output_json: Path) -> dict:
     full_cmd = cmd + ["--output-json", str(output_json)]
-    subprocess.run(full_cmd, check=True)
+    result = subprocess.run(full_cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(
+            "Benchmark command failed.\n"
+            f"Command: {' '.join(full_cmd)}\n"
+            f"Return code: {result.returncode}\n"
+            f"stdout:\n{result.stdout}\n"
+            f"stderr:\n{result.stderr}\n"
+        )
+    if not output_json.exists():
+        raise FileNotFoundError(
+            "Benchmark command finished but output json was not created.\n"
+            f"Expected: {output_json}\n"
+            "Run the command manually to inspect runtime logs:\n"
+            f"{' '.join(full_cmd)}\n"
+            f"stdout:\n{result.stdout}\n"
+            f"stderr:\n{result.stderr}\n"
+        )
     return json.loads(output_json.read_text())
 
 

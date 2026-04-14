@@ -80,6 +80,12 @@ If you use Anaconda/Miniconda, activate your env first and run the same
 interpreter (`sys.executable`) and can also be overridden with
 `--python-executable`.
 
+## Troubleshooting
+
+- If wrapper reports `baseline.json` / `popularity_aware.json` missing, run the
+  printed throughput command directly. This usually means the inner benchmark
+  failed before writing `--output-json` (model download/auth/env mismatch).
+
 ## Metrics to compare
 
 - `requests_per_second`
