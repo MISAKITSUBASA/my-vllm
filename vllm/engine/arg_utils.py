@@ -531,6 +531,7 @@ class EngineArgs:
     lora_target_modules: list[str] | None = LoRAConfig.target_modules
     enable_tower_connector_lora: bool = LoRAConfig.enable_tower_connector_lora
     specialize_active_lora: bool = LoRAConfig.specialize_active_lora
+    lora_hot_ids: str | None = None
 
     ray_workers_use_nsight: bool = ParallelConfig.ray_workers_use_nsight
     num_gpu_blocks_override: int | None = CacheConfig.num_gpu_blocks_override
@@ -1198,6 +1199,16 @@ class EngineArgs:
         lora_group.add_argument(
             "--specialize-active-lora", **lora_kwargs["specialize_active_lora"]
         )
+        lora_group.add_argument(
+            "--lora-hot-ids",
+            type=str,
+            default=None,
+            help=(
+                "Optional comma-separated list of hot LoRA IDs used as "
+                "static popularity hints for runtime residency policy. "
+                "Example: --lora-hot-ids 1,2,3"
+            ),
+        )
 
         # Observability arguments
         observability_kwargs = get_kwargs(ObservabilityConfig)
@@ -1564,6 +1575,21 @@ class EngineArgs:
         )
         return SpeculativeConfig(**self.speculative_config)
 
+    def _parse_lora_hot_ids(self) -> list[int] | None:
+        if self.lora_hot_ids is None:
+            return None
+        raw_tokens = [token.strip() for token in self.lora_hot_ids.split(",")]
+        raw_tokens = [token for token in raw_tokens if token]
+        if not raw_tokens:
+            return None
+        try:
+            return [int(token) for token in raw_tokens]
+        except ValueError as err:
+            raise ValueError(
+                "--lora-hot-ids must be a comma-separated list of integers. "
+                f"Got: {self.lora_hot_ids!r}"
+            ) from err
+
     def create_engine_config(
         self,
         usage_context: UsageContext | None = None,
@@ -1909,6 +1935,7 @@ class EngineArgs:
                 target_modules=self.lora_target_modules,
                 enable_tower_connector_lora=self.enable_tower_connector_lora,
                 specialize_active_lora=self.specialize_active_lora,
+                hot_lora_ids=self._parse_lora_hot_ids(),
                 max_cpu_loras=self.max_cpu_loras
                 if self.max_cpu_loras and self.max_cpu_loras > 0
                 else None,

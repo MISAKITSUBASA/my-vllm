@@ -349,6 +349,9 @@ def get_requests(args, tokenizer):
         "lora_path": args.lora_path,
         "max_loras": args.max_loras,
         "lora_assignment": getattr(args, "lora_assignment", "random"),
+        "hot_lora_count": getattr(args, "hot_lora_count", 1),
+        "hot_request_ratio": getattr(args, "hot_request_ratio", 0.9),
+        "lora_assignment_sequence": _load_lora_assignment_sequence(args),
         "num_requests": args.num_prompts,
     }
 
@@ -484,6 +487,21 @@ def get_requests(args, tokenizer):
     requests = dataset_cls(**common_kwargs).sample(**sample_kwargs)
     requests = filter_requests_for_dp(requests, args.data_parallel_size)
     return requests
+
+
+def _load_lora_assignment_sequence(args: argparse.Namespace) -> list[int] | None:
+    assignment_file = getattr(args, "lora_assignment_file", None)
+    if assignment_file is None:
+        return None
+    with open(assignment_file) as f:
+        sequence = json.load(f)
+    if not isinstance(sequence, list) or not sequence:
+        raise ValueError("--lora-assignment-file must contain a non-empty JSON list.")
+    if not all(isinstance(item, int) and item >= 1 for item in sequence):
+        raise ValueError(
+            "--lora-assignment-file must contain integer LoRA IDs >= 1."
+        )
+    return sequence
 
 
 def filter_requests_for_dp(requests, data_parallel_size):
@@ -650,6 +668,17 @@ def validate_args(args):
         raise ValueError("LoRA benchmarking is only supported for vLLM backend")
     if getattr(args, "enable_lora", False) and args.lora_path is None:
         raise ValueError("LoRA path must be provided when enable_lora is True")
+    if getattr(args, "lora_assignment", "random") == "skewed":
+        if args.hot_lora_count < 1:
+            raise ValueError("--hot-lora-count must be >= 1 for skewed assignment")
+        if not (0.0 <= args.hot_request_ratio <= 1.0):
+            raise ValueError("--hot-request-ratio must be in [0, 1]")
+    if getattr(args, "lora_assignment_file", None) is not None:
+        sequence = _load_lora_assignment_sequence(args)
+        if args.max_loras is not None and max(sequence) > args.max_loras:
+            raise ValueError(
+                "LoRA assignment file contains ID larger than --max-loras."
+            )
 
     # === Backend-specific Validations ===
     if args.backend == "hf" and args.hf_max_batch_size is None:
@@ -782,10 +811,40 @@ def add_cli_args(parser: argparse.ArgumentParser):
         "--lora-assignment",
         type=str,
         default="random",
-        choices=["random", "round-robin"],
+        choices=["random", "round-robin", "skewed"],
         help="Strategy for assigning LoRA adapters to requests. "
         "'random' (default) selects a LoRA at random for each request. "
-        "'round-robin' cycles through LoRAs deterministically.",
+        "'round-robin' cycles through LoRAs deterministically. "
+        "'skewed' simulates hot/cold adapter popularity.",
+    )
+    parser.add_argument(
+        "--hot-lora-count",
+        type=int,
+        default=1,
+        help=(
+            "When --lora-assignment=skewed, number of hot adapters "
+            "(IDs 1..hot-lora-count)."
+        ),
+    )
+    parser.add_argument(
+        "--hot-request-ratio",
+        type=float,
+        default=0.9,
+        help=(
+            "When --lora-assignment=skewed, fraction of requests routed "
+            "to hot adapters."
+        ),
+    )
+    parser.add_argument(
+        "--lora-assignment-file",
+        type=str,
+        default=None,
+        help=(
+            "Optional JSON file with a fixed LoRA ID sequence "
+            "(e.g., [1,1,2,5,...]). If provided, this sequence overrides "
+            "random/round-robin/skewed assignment and ensures run-to-run "
+            "reproducibility."
+        ),
     )
     parser.add_argument(
         "--prefix-len",
