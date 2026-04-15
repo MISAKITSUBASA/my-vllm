@@ -85,6 +85,10 @@ interpreter (`sys.executable`) and can also be overridden with
 - If wrapper reports `baseline.json` / `popularity_aware.json` missing, run the
   printed throughput command directly. This usually means the inner benchmark
   failed before writing `--output-json` (model download/auth/env mismatch).
+- First run may take a long time due to Hugging Face model/adapter download and
+  model initialization. For smoke tests on laptops, start with small values
+  (e.g., `--num-prompts 8 --input-len 16 --output-len 8`) and scale up after
+  confirming end-to-end success.
 
 ## Metrics to compare
 

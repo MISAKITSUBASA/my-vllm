@@ -74,14 +74,27 @@ def build_cmd(
 
 def run_cmd(cmd: list[str], output_json: Path) -> dict:
     full_cmd = cmd + ["--output-json", str(output_json)]
-    result = subprocess.run(full_cmd, capture_output=True, text=True)
-    if result.returncode != 0:
+    print(f"Running: {' '.join(full_cmd)}")
+    logs: list[str] = []
+    process = subprocess.Popen(
+        full_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    assert process.stdout is not None
+    for line in process.stdout:
+        print(line, end="")
+        logs.append(line)
+    process.wait()
+    combined_logs = "".join(logs)
+    if process.returncode != 0:
         raise RuntimeError(
             "Benchmark command failed.\n"
             f"Command: {' '.join(full_cmd)}\n"
-            f"Return code: {result.returncode}\n"
-            f"stdout:\n{result.stdout}\n"
-            f"stderr:\n{result.stderr}\n"
+            f"Return code: {process.returncode}\n"
+            f"logs:\n{combined_logs}\n"
         )
     if not output_json.exists():
         raise FileNotFoundError(
@@ -89,8 +102,7 @@ def run_cmd(cmd: list[str], output_json: Path) -> dict:
             f"Expected: {output_json}\n"
             "Run the command manually to inspect runtime logs:\n"
             f"{' '.join(full_cmd)}\n"
-            f"stdout:\n{result.stdout}\n"
-            f"stderr:\n{result.stderr}\n"
+            f"logs:\n{combined_logs}\n"
         )
     return json.loads(output_json.read_text())
 
