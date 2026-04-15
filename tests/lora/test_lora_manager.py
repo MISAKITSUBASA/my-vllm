@@ -238,6 +238,70 @@ def test_lora_lru_cache_model_manager(
     assert manager.lora_index_to_id[1] == 2
     assert manager.remove_adapter(model_lora2.id)
     assert manager.lora_index_to_id[1] is None
+
+
+@pytest.mark.parametrize("device", DEVICES)
+def test_lora_popularity_aware_gpu_eviction_prefers_cold(
+    default_vllm_config, dist_init, dummy_model, device
+):
+    model = dummy_model
+    model_lora1 = create_lora(1, model, ["dense1", "dense2", "lm_head"], device=device)
+    model_lora2 = create_lora(2, model, ["dense1", "dense2", "lm_head"], device=device)
+    model_lora3 = create_lora(3, model, ["dense1", "dense2", "lm_head"], device=device)
+    manager = LRUCacheLoRAModelManager(
+        model,
+        2,
+        2,
+        2,
+        LoRAConfig(
+            max_lora_rank=8,
+            max_cpu_loras=3,
+            max_loras=2,
+            lora_dtype=DEFAULT_DTYPE,
+            hot_lora_ids=[1],
+        ),
+        device=device,
+    )
+    assert manager.add_adapter(model_lora1)
+    assert manager.add_adapter(model_lora2)
+    assert manager.add_adapter(model_lora3)
+    assert manager.activate_adapter(1)
+    assert manager.activate_adapter(2)
+    assert set(x for x in manager.lora_index_to_id if x is not None) == {1, 2}
+
+    # Incoming hot adapter should evict cold adapter 2 first.
+    assert manager.activate_adapter(3)
+    active_after = set(x for x in manager.lora_index_to_id if x is not None)
+    assert active_after == {1, 3}
+
+
+@pytest.mark.parametrize("device", DEVICES)
+def test_lora_popularity_hint_fallback_matches_lru(
+    default_vllm_config, dist_init, dummy_model, device
+):
+    model = dummy_model
+    model_lora1 = create_lora(1, model, ["dense1", "dense2", "lm_head"], device=device)
+    model_lora2 = create_lora(2, model, ["dense1", "dense2", "lm_head"], device=device)
+    model_lora3 = create_lora(3, model, ["dense1", "dense2", "lm_head"], device=device)
+    manager = LRUCacheLoRAModelManager(
+        model,
+        2,
+        2,
+        2,
+        LoRAConfig(
+            max_lora_rank=8, max_cpu_loras=3, max_loras=2, lora_dtype=DEFAULT_DTYPE
+        ),
+        device=device,
+    )
+    assert manager.add_adapter(model_lora1)
+    assert manager.add_adapter(model_lora2)
+    assert manager.add_adapter(model_lora3)
+    assert manager.activate_adapter(1)
+    assert manager.activate_adapter(2)
+    assert manager.activate_adapter(3)
+    # Without hints, the oldest active adapter (1) is evicted by baseline LRU.
+    active_after = set(x for x in manager.lora_index_to_id if x is not None)
+    assert active_after == {2, 3}
     assert not manager.remove_adapter(model_lora2.id)
     assert manager.remove_adapter(model_lora1.id)
     assert not manager.remove_adapter(model_lora1.id)

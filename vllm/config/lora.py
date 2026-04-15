@@ -71,6 +71,10 @@ class LoRAConfig:
     for variable LoRA usage patterns at the cost of increased startup time and
     memory usage. Only takes effect when cudagraph_specialize_lora is True.
     """
+    hot_lora_ids: list[int] | None = None
+    """Optional static popularity hint listing "hot" LoRA IDs.
+    When provided, runtime cache policy prefers keeping these adapters
+    resident on GPU under adapter-slot pressure."""
 
     def compute_hash(self) -> str:
         """
@@ -115,6 +119,14 @@ class LoRAConfig:
                 "VLLM_LORA_ENABLE_DUAL_STREAM, set VLLM_LORA_ENABLE_DUAL_STREAM=False"
             )
             envs.VLLM_LORA_ENABLE_DUAL_STREAM = False
+        if self.hot_lora_ids is not None:
+            invalid_ids = [lora_id for lora_id in self.hot_lora_ids if lora_id < 1]
+            if invalid_ids:
+                raise ValueError(
+                    "All hot_lora_ids must be >= 1. "
+                    f"Got invalid values: {invalid_ids}"
+                )
+            self.hot_lora_ids = sorted(set(self.hot_lora_ids))
         return self
 
     def verify_with_model_config(self, model_config: ModelConfig):

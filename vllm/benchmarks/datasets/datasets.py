@@ -221,6 +221,9 @@ class BenchmarkDataset(ABC):
         max_loras: int | None = None,
         lora_path: str | None = None,
         lora_assignment: str = "random",
+        hot_lora_count: int = 1,
+        hot_request_ratio: float = 0.9,
+        lora_assignment_sequence: list[int] | None = None,
     ) -> LoRARequest | None:
         """
         Select a LoRA request using the specified assignment strategy.
@@ -230,15 +233,42 @@ class BenchmarkDataset(ABC):
             max_loras (Optional[int]): The maximum number of LoRAs available.
             lora_path (Optional[str]): Path to the LoRA parameters on disk.
             lora_assignment (str): Strategy for LoRA selection.
-                'random' (default) or 'round-robin'.
+                'random' (default), 'round-robin', or 'skewed'.
 
         Returns:
             A new [`LoRARequest`][vllm.lora.request.LoRARequest]
             (or `None` if not applicable).
         """
+        if lora_assignment_sequence:
+            if max_loras is None or lora_path is None:
+                return None
+            lora_id = lora_assignment_sequence[index % len(lora_assignment_sequence)]
+            return LoRARequest(
+                lora_name=str(lora_id),
+                lora_int_id=lora_id,
+                lora_path=lora_path_on_disk(lora_path),
+            )
         if lora_assignment == "round-robin":
             return self.get_round_robin_lora_request(
                 index=index, max_loras=max_loras, lora_path=lora_path
+            )
+        if lora_assignment == "skewed":
+            if max_loras is None or lora_path is None:
+                return None
+            hot_lora_count = max(1, min(hot_lora_count, max_loras))
+            hot_request_ratio = min(max(hot_request_ratio, 0.0), 1.0)
+            if random.random() < hot_request_ratio:
+                lora_id = random.randint(1, hot_lora_count)
+            else:
+                cold_count = max_loras - hot_lora_count
+                if cold_count > 0:
+                    lora_id = random.randint(hot_lora_count + 1, max_loras)
+                else:
+                    lora_id = random.randint(1, hot_lora_count)
+            return LoRARequest(
+                lora_name=str(lora_id),
+                lora_int_id=lora_id,
+                lora_path=lora_path_on_disk(lora_path),
             )
         return self.get_random_lora_request(max_loras=max_loras, lora_path=lora_path)
 
@@ -601,6 +631,7 @@ class RandomDataset(BenchmarkDataset):
                 max_loras=max_loras,
                 lora_path=lora_path,
                 lora_assignment=lora_assignment,
+                lora_assignment_sequence=kwargs.get("lora_assignment_sequence"),
             )
             requests.append(
                 SampleRequest(
@@ -1336,6 +1367,7 @@ class ShareGPTDataset(BenchmarkDataset):
                 max_loras=max_loras,
                 lora_path=lora_path,
                 lora_assignment=lora_assignment,
+                lora_assignment_sequence=kwargs.get("lora_assignment_sequence"),
             )
             prompt_ids = tokenizer(prompt).input_ids
             completion_ids = tokenizer(completion).input_ids
@@ -2504,6 +2536,7 @@ class BurstGPTDataset(BenchmarkDataset):
                 max_loras=max_loras,
                 lora_path=lora_path,
                 lora_assignment=lora_assignment,
+                lora_assignment_sequence=kwargs.get("lora_assignment_sequence"),
             )
             vocab_size = tokenizer.vocab_size
             # Generate a synthetic prompt: a list of token IDs computed as (i +

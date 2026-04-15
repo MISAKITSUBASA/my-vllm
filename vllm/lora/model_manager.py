@@ -868,6 +868,7 @@ class LRUCacheLoRAModelManager(LoRAModelManager):
         self._active_adapters: LoRALRUCache = LoRALRUCache(
             self.lora_slots, self._deactivate_adapter
         )
+        self._hot_lora_ids: set[int] = set(self.lora_config.hot_lora_ids or [])
 
     def list_adapters(self) -> dict[int, LoRAModel]:
         """List all registered LoRAModels."""
@@ -893,11 +894,30 @@ class LRUCacheLoRAModelManager(LoRAModelManager):
             lora_id not in self._active_adapters
             and len(self._active_adapters) >= self.lora_slots
         ):
-            self._active_adapters.remove_oldest()
+            adapter_to_evict = self._select_adapter_to_evict(lora_id)
+            if adapter_to_evict is None:
+                self._active_adapters.remove_oldest()
+            else:
+                self._active_adapters.pop(adapter_to_evict)
         result = super().activate_adapter(lora_id)
         # We always touch to update the LRU cache order
         self._active_adapters.touch(lora_id)
         return result
+
+    def _select_adapter_to_evict(self, incoming_lora_id: int) -> int | None:
+        if not self._hot_lora_ids:
+            return None
+        evictable_ids = [
+            adapter_id
+            for adapter_id in self._active_adapters.order
+            if adapter_id not in self._active_adapters.pinned_items
+        ]
+        for adapter_id in evictable_ids:
+            if adapter_id not in self._hot_lora_ids:
+                return adapter_id
+        if incoming_lora_id in self._hot_lora_ids and evictable_ids:
+            return evictable_ids[0]
+        return None
 
     def remove_oldest_adapter(self) -> bool:
         if len(self._registered_adapters) > 0:
